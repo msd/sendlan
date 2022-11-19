@@ -1,0 +1,11 @@
+[requires]
+icu/71.1
+boost/1.80.0
+
+[generators]
+cmake_paths
+cmake_find_package
+
+[options]
+# boost:i18n_backend_icu=True
+boost:i18n_backend_iconv=libiconv

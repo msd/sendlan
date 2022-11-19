@@ -1,0 +1,9 @@
+# Executables & libraries
+*.exe
+*.dll
+*.lib
+*.a
+*.dylib
+
+
+.vscode
