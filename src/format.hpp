@@ -1,3 +1,6 @@
+#ifndef BA05FC40_3EEE_497B_B59B_05EBB3BC5441
+#define BA05FC40_3EEE_497B_B59B_05EBB3BC5441
+
 #include <string>
 #include <ranges>
 
@@ -20,7 +23,7 @@ std::string to_string(const std::byte &b)
 	str.append(1, hex_digit(i / 0x10));
 	str.append(1, hex_digit(i % 0x10));
 	return str;
-};
+}
 
 using std::to_string;
 
@@ -36,7 +39,8 @@ struct join_with_view : public std::ranges::view_interface<join_with_view>
 // struct join_with: public std::ranges::views::__adaptor::_RangeAdaptor
 
 // TODO create a range adaptor to do laizily
-template <std::forward_iterator It, std::sentinel_for<It> Sen>
+template <typename It, typename Sen>
+// template <std::forward_iterator It, std::sentinel_for<It> Sen>
 std::string join_with(It it, Sen sen, std::string delim)
 {
 	std::string joined;
@@ -58,11 +62,11 @@ std::string join_with(Range r, std::string delim)
 	return join_with(std::ranges::cbegin(r), std::ranges::cend(r), std::move(delim));
 }
 
-template <class T>
-concept stringable = requires (const T& t)
-{
-	to_string(t);
-};
+// template <class T>
+// concept stringable = requires (const T& t)
+// {
+// 	to_string(t);
+// };
 
 
 // template <std::ranges::range Range>
@@ -74,3 +78,6 @@ concept stringable = requires (const T& t)
 	
 // 	return joined;
 // }
+
+
+#endif /* BA05FC40_3EEE_497B_B59B_05EBB3BC5441 */

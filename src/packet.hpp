@@ -6,8 +6,8 @@
 #include "endian.hpp"
 #include "message.hpp"
 #include "format.hpp"
+#include "packets/packet_header.hpp"
 
-using HDR_SIZE_T = uint32_t;
 using packet_str = std::basic_string<std::byte>;
 
 std::string to_string(packet_str p)
@@ -30,7 +30,7 @@ packet_str to_packet(std::string_view str)
 packet_str packet_with_message(std::string_view contents)
 {
     packet_str pkt{4, std::byte{0}}; // reserve space for size
-    auto hdr_size = static_cast<HDR_SIZE_T>(contents.size());
+    auto hdr_size = static_cast<HDR_DATA_SIZE_T>(contents.size());
     to_big_endian(hdr_size, pkt.data());
     pkt.append(1, std::byte{0});
     pkt += {reinterpret_cast<const std::byte*>(contents.data()), contents.size()};
@@ -70,8 +70,8 @@ struct ByteExtractor {
     // template <>
     auto extract_int()
     {
-        auto bytes = extract_bytes<sizeof(HDR_SIZE_T)>();
-        return from_big_endian_array<HDR_SIZE_T>(bytes);
+        auto bytes = extract_bytes<sizeof(HDR_DATA_SIZE_T)>();
+        return from_big_endian_array<HDR_DATA_SIZE_T>(bytes);
     }
 
     auto extract_rest()
@@ -80,7 +80,7 @@ struct ByteExtractor {
     }
 };
 
-message decode_message(packet_str &&data)
+message decode_packet(packet_str &&data)
 {
     constexpr int MIN_SIZE = 5;
     if (data.size() < MIN_SIZE)
@@ -108,10 +108,11 @@ message decode_message(packet_str &&data)
 
 class PACKET
 {
+    // template <typename N>
     template <std::integral N>
     check_length(N n)
     {
-        if (n > std::numeric_limits<HDR_SIZE_T>::max())
+        if (n > std::numeric_limits<HDR_DATA_SIZE_T>::max())
         {
             throw std::runtime_error("data too big");
         }

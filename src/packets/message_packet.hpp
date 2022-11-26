@@ -14,13 +14,13 @@ class message_packet : PACKET
 public:
     message_packet(std::string_view message)
     {
-        if (message.size() > std::numeric_limits<HDR_SIZE_T>::max())
+        if (message.size() > std::numeric_limits<HDR_DATA_SIZE_T>::max())
         { 
             throw std::runtime_error("message too long");
         }
 
         auto message_bytes = reinterpret_cast<const std::byte*>(message.data());
-        auto message_len = static_cast<HDR_SIZE_T>(message.size());
+        auto message_len = static_cast<HDR_DATA_SIZE_T>(message.size());
         to_big_endian(message_len, back_inserter(str));
         str.append(1, std::byte{0});
         std::copy(message_bytes, message_bytes + message_len, std::back_inserter(str));
