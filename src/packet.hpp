@@ -99,7 +99,6 @@ message decode_packet(packet_str &&data)
     auto msg = ex.extract_rest(); // msg
     if (msg.size() != msg_len)
     {
-        std::cout << to_string(data);
         throw std::runtime_error("message received is of length " + std::to_string(msg.size()) + " but expected size " + std::to_string(msg_len));
     }
 

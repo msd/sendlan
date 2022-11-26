@@ -9,6 +9,7 @@
 #include <ranges>
 #include <string>
 #include <vector>
+#include <sstream>
 
 template<typename T>
 concept TriviallyCopyable = std::is_trivially_copyable_v<T>;

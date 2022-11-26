@@ -3,7 +3,7 @@
 
 #include <ranges>
 
-#include "../packet.hpp"
+#include "packet.hpp"
 
 constexpr std::byte HEADER_SPLIT{0};
 constexpr std::byte DATA_SPLIT{0};
