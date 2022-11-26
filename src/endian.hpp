@@ -5,96 +5,104 @@
 #include <bit>
 #include <exception>
 #include <fstream>
-#include <string>
-#include <vector>
 #include <iterator>
 #include <ranges>
+#include <string>
+#include <vector>
 
-template <class Int, class It>
-Int be_int(It beg, It end)
+template<typename T>
+concept TriviallyCopyable = std::is_trivially_copyable_v<T>;
+
+template <class I, class O>
+using copy_fn_fancy = decltype(std::copy<I, O>);
+
+using copy_fn = std::byte* (*)(std::byte*, std::byte*, std::byte*);
+
+namespace detail
 {
-    Int ret = 0;
-    if (end - beg != sizeof(ret))
+    // copy bytes to array
+    template <TriviallyCopyable T>
+    static auto copy_bytes_to_array(T x, copy_fn cf)
     {
-        throw std::runtime_error("range received not of length " + std::to_string(sizeof(ret)));
+        std::array<std::byte, sizeof (T)> bytes;
+        auto start = reinterpret_cast<std::byte*>(&x);
+        cf(start, start + sizeof x, bytes.data());
+        return bytes;
     }
-    for (auto i = beg; i != end; ++i)
+
+    // Return a copy function that will copy the bytes from memory
+    // to a buffer preserving the wanted endianess.
+    // if wanted is native then std::copy else std::reverse copy
+    static copy_fn choose_copy(std::endian wanted)
     {
-        ret <<= 8;
-        ret += *i;
+        if (wanted == std::endian::native)
+        {
+            return &std::copy;
+        }
+        else{
+            return &std::reverse_copy;
+        }
     }
-    return ret;
+
+    namespace good
+    {
+        template <TriviallyCopyable Val>
+        auto to_big_endian_array(Val val)
+        {
+            return detail::copy_bytes_to_array(val, detail::choose_copy(std::endian::big));
+        }
+
+        template <TriviallyCopyable Val>
+        auto to_little_endian_array(Val val)
+        {
+            return detail::copy_bytes_to_array(val, detail::choose_copy(std::endian::little));
+        }
+    }
 }
 
-template <typename T>
-auto direct_copy_bytes(T x)
+// template <std::input_iterator I, std::output_iterator O>
+template <class I, class O>
+O copy_appropriate(std::endian wanted, I b, I e, O o)
 {
-    using std::copy;
-    std::array<std::byte, sizeof (T)> bytes;
-    auto start = reinterpret_cast<std::byte*>(&x);
-    copy(start, start + sizeof x, bytes.data());
-    return bytes;
+    if (std::endian::native == wanted)
+    {
+        return std::copy(b, e, o);
+    }
+    return std::reverse_copy(b, e, o);
 }
 
-template <typename T>
-auto reverse_copy_bytes(T x)
+using namespace detail::good;
+
+// template <typename Val, typename ItOut>
+template <TriviallyCopyable Val, std::output_iterator<std::byte> ItOut> // TODO use macro feature check
+auto to_little_endian(Val val, ItOut beg)
 {
-    using std::reverse_copy;
-    std::array<std::byte, sizeof (T)> bytes;
-    auto start = reinterpret_cast<std::byte*>(&x);
-    reverse_copy(start, start + sizeof x, bytes.data());
-    return bytes;
+    std::byte *bytes = reinterpret_cast<std::byte>(&val);
+    return copy_appropriate(std::endian::little, bytes, bytes + sizeof val, beg);
 }
 
-template <typename Int>
-auto to_big_endian_array(Int x)
+// template <typename Val, typename ItOut>
+template <TriviallyCopyable Val, std::output_iterator<std::byte> ItOut> // TODO use macro feature check
+auto to_big_endian(Val val, ItOut beg)
 {
-    using std::endian;
-    return endian::native == endian::big ? direct_copy_bytes(x) : reverse_copy_bytes(x);
+    auto bytes = to_big_endian_array(val);
+    return std::ranges::copy(bytes, beg).out;
 }
 
-template <typename Int>
-auto to_little_endian_array(Int x)
-{
-    using std::endian;
-    return endian::native == endian::little ? direct_copy_bytes(x) : reverse_copy_bytes(x);
-}
-
-template <typename Int, std::output_iterator<std::byte> ItOut>
-auto to_little_endian(Int x, ItOut beg)
-{
-    auto bytes = to_little_endian_array(x);
-    return std::ranges::copy(bytes, beg);
-}
-
-template <typename Int, std::output_iterator<std::byte> ItOut>
-auto to_big_endian(Int x, ItOut beg)
-{
-    auto bytes =  to_big_endian_array(x);
-    return std::ranges::copy(bytes, beg);
-}
-
-template <typename To, typename ByteIter>
-To from_little_endian(ByteIter beg)
+template <TriviallyCopyable Val, std::input_iterator ByteIter>
+Val from_little_endian(ByteIter beg)
 {
     using std::endian, std::byte;
-    To converted;
-    if (endian::native == endian::little)
-    {
-        copy(beg, beg + sizeof(To), reinterpret_cast<byte*>(&converted));
-    }
-    else
-    {
-        reverse_copy(beg, beg + sizeof(To), reinterpret_cast<byte*>(&converted));
-    }
+    Val converted;
+    copy_appropriate(endian::little, beg, beg + sizeof(Val), reinterpret_cast<byte*>(&converted));
     return converted;
 }
 
-template <typename To>
-To from_little_endian_array(std::array<std::byte, sizeof(To)> bytes)
+template <TriviallyCopyable Val>
+Val from_little_endian_array(std::array<std::byte, sizeof(Val)> bytes)
 {
     using std::endian, std::byte;
-    To converted;
+    Val converted;
     if (endian::native == endian::little)
     {
         copy(cbegin(bytes), cend(bytes), reinterpret_cast<byte*>(&converted));
@@ -106,66 +114,73 @@ To from_little_endian_array(std::array<std::byte, sizeof(To)> bytes)
     return converted;
 }
 
-template <typename To, std::input_iterator ByteIter>
-To from_big_endian(ByteIter beg)
+// template <typename Val, typename ByteIter>
+template <TriviallyCopyable Val, std::input_iterator ByteIter> // TODO use macro feature check
+Val from_big_endian(ByteIter beg)
 {
     using std::endian, std::byte;
-    To converted;
+    Val converted;
     if (endian::native == endian::big)
     {
-        copy(beg, beg + sizeof(To), reinterpret_cast<byte*>(&converted));
+        copy(beg, beg + sizeof(Val), reinterpret_cast<byte*>(&converted));
     }
     else
     {
-        reverse_copy(beg, beg + sizeof(To), reinterpret_cast<byte*>(&converted));
+        reverse_copy(beg, beg + sizeof(Val), reinterpret_cast<byte*>(&converted));
     }
     return converted;
 }
 
-template <typename To>
-To from_big_endian_array(std::array<std::byte, sizeof(To)> bytes)
+// template <std::output_iterator Val>
+template <TriviallyCopyable Val>
+Val from_big_endian_array(std::array<std::byte, sizeof(Val)> bytes)
 {
     using std::endian, std::byte;
-    To converted;
-    if (endian::native == endian::big)
-    {
-        copy(cbegin(bytes), cend(bytes), reinterpret_cast<std::byte*>(&converted));
-    }
-    else
-    {
-        reverse_copy(cbegin(bytes), cend(bytes), reinterpret_cast<std::byte*>(&converted));
-    }
+    Val converted;
+    copy_appropriate(endian::big, begin(bytes), end(bytes), reinterpret_cast<std::byte*>(&converted));
     return converted;
 }
 
-template <typename Tout, std::input_iterator Iterator, std::sentinel_for<Iterator> Sentinel, std::output_iterator<Tout> IteratorOut>
-IteratorOut many_from_big_endian(Iterator beg, Sentinel end, IteratorOut start)
+// template <typename Val, typename Iterator, typename Sentinel, typename IteratorOut>
+// template <TriviallyCopyable Val, std::input_iterator Iterator, std::sentinel_for<Iterator> Sentinel, std::output_iterator<Val> IteratorOut> // TODO use macro feature check
+template <TriviallyCopyable Val, std::input_iterator Iterator, std::output_iterator<Val> IteratorOut> // TODO use macro feature check
+// template <class Val, class Iterator, class IteratorOut> // TODO use macro feature check
+IteratorOut many_from_big_endian(Iterator beg, Iterator end, IteratorOut start)
 {
-    decltype(std::iterator_traits<Iterator>::difference_type) byte_count = end - beg;
-    size_t bytes_per_unit = sizeof(Tout);
+    // decltype(std::iterator_traits<Iterator>::difference_type) byte_count = end - beg;
+    auto byte_count = end - beg;
+    size_t bytes_per_unit = sizeof(Val);
     if (byte_count % bytes_per_unit != 0)
     {
-        throw runtime_error("number of bytes given is not an integer multiple of the bytes per unit (count " + to_string(byte_count) + ", unit " + std::to_string(bytes_per_unit) + ")");
+        std::ostringstream ss;
+        ss << "number of bytes given is not an integer multiple of the bytes per unit (count "
+        << byte_count << ", unit " << bytes_per_unit << ")";
+        throw std::runtime_error(ss.str());
     }
-    for (auto i = beg; i != end; i += sizeof(Tout))
+    for (auto i = beg; i != end; i += sizeof(Val))
     {
-        *(start++) = from_big_endian<Tout>(i);
+        *(start++) = from_big_endian<Val>(i);
     }
     return start;
 }
  
-template <typename Tout, std::input_iterator Iterator, std::sentinel_for<Iterator> Sentinel, std::output_iterator<Tout> IteratorOut>
-IteratorOut many_from_little_endian(Iterator beg, Sentinel end, IteratorOut start)
+// template <typename Val, typename Iterator, typename Sentinel, typename IteratorOut>
+// template <TriviallyCopyable Val, std::input_iterator Iterator, std::sentinel_for<Iterator> Sentinel, std::output_iterator<Val> IteratorOut> // TODO use macro feature check
+template <TriviallyCopyable Val, std::input_iterator Iterator, std::output_iterator<Val> IteratorOut> // TODO use macro feature check
+IteratorOut many_from_little_endian(Iterator beg, Iterator end, IteratorOut start)
 {
     auto byte_count = end - beg;
-    auto bytes_per_unit = sizeof(Tout);
+    auto bytes_per_unit = sizeof(Val);
     if (byte_count % bytes_per_unit != 0)
     {
-        throw runtime_error("number of bytes given is not an integer multiple of the bytes per unit (count " + to_string(byte_count) + ", unit " + std::to_string(bytes_per_unit) + ")");
+        std::stringstream err;
+        err << "number of bytes given is not an integer multiple of the bytes per unit (count "
+        << byte_count << ", unit " << bytes_per_unit << ")";
+        throw std::runtime_error(err.str());
     }
-    for (auto i = beg; i != end; i += sizeof(Tout))
+    for (auto i = beg; i != end; i += sizeof(Val))
     {
-        *(start++) = from_little_endian<Tout>(i);
+        *(start++) = from_little_endian<Val>(i);
     }
     return start;
 }
