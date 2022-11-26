@@ -46,7 +46,7 @@ int main(int argc, char* argv[])
             packet_data.append(buf.data(), len);
         }
         
-        message m = decode_message(std::move(packet_data));
+        message m = decode_packet(std::move(packet_data));
 
         std::cout << "Received message " << m.data.size() << '\n';
     }
